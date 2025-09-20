@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Users, RefreshCw, LogOut, AlertCircle, CheckCircle, Download, UserCheck, Heart, UserMinus, Shield, Star } from 'lucide-react';
+import { Search, Users, RefreshCw, LogOut, AlertCircle, CheckCircle, Download, UserCheck, Heart, UserMinus, Shield, Star, StarOff, Hash } from 'lucide-react';
 import { GitHubApiService } from '../services/githubApi';
-import { GitHubUser, AuthConfig, UserWithFollowStatus, GitHubRepository, GitHubRateLimit } from '../types/github';
+import { GitHubUser, AuthConfig, UserWithFollowStatus, GitHubRepository, GitHubRateLimit, GitHubTopic } from '../types/github';
 import { UserCard } from './UserCard';
 import { RepositoryCard } from './RepositoryCard';
-import { convertToCSV, downloadCSV, getCSVFilename, convertReposToCSV } from '../utils/csvExport';
+import { TopicCard } from './TopicCard';
+import { convertToCSV, downloadCSV, getCSVFilename, convertReposToCSV, convertTopicsToCSV } from '../utils/csvExport';
 
 interface DashboardProps {
   config: AuthConfig;
@@ -16,16 +17,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
   const [following, setFollowing] = useState<UserWithFollowStatus[]>([]);
   const [followers, setFollowers] = useState<GitHubUser[]>([]);
   const [starredRepos, setStarredRepos] = useState<GitHubRepository[]>([]);
+  const [topics, setTopics] = useState<GitHubTopic[]>([]);
+  const [topicsSearchQuery, setTopicsSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFollowers, setIsLoadingFollowers] = useState(false);
   const [isLoadingStarred, setIsLoadingStarred] = useState(false);
+  const [isLoadingTopics, setIsLoadingTopics] = useState(false);
   const [isCheckingMutualFollows, setIsCheckingMutualFollows] = useState(false);
   const [unfollowingUsers, setUnfollowingUsers] = useState<Set<string>>(new Set());
   const [isBulkUnfollowing, setIsBulkUnfollowing] = useState(false);
   const [bulkUnfollowProgress, setBulkUnfollowProgress] = useState({ current: 0, total: 0 });
+  const [unstarringRepos, setUnstarringRepos] = useState<Set<number>>(new Set());
+  const [isBulkUnstarring, setIsBulkUnstarring] = useState(false);
+  const [bulkUnstarProgress, setBulkUnstarProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'following' | 'followers' | 'starred'>('following');
+  const [activeTab, setActiveTab] = useState<'following' | 'followers' | 'starred' | 'topics'>('following');
   const [rateLimit, setRateLimit] = useState<GitHubRateLimit | null>(null);
 
   const apiService = useMemo(() => new GitHubApiService({
@@ -34,7 +41,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
   }), [config, currentUser?.login]);
 
   const filteredUsers = useMemo(() => {
-    if (activeTab === 'starred') return [];
+    if (activeTab === 'starred' || activeTab === 'topics') return [];
     const users = activeTab === 'following' ? following : followers;
     if (!searchTerm) return users;
     
@@ -57,6 +64,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
       (repo.language && repo.language.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [starredRepos, searchTerm, activeTab]);
+
+  const filteredTopics = useMemo(() => {
+    if (activeTab !== 'topics') return [];
+    if (!searchTerm) return topics;
+    
+    return topics.filter(topic => 
+      topic.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (topic.display_name && topic.display_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (topic.short_description && topic.short_description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (topic.description && topic.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [topics, searchTerm, activeTab]);
 
   const mutualFollowsCount = useMemo(() => {
     return following.filter(user => user.isMutualFollow).length;
@@ -175,6 +194,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     }
   };
 
+  const fetchPopularTopics = async () => {
+    if (topics.length > 0) return; // Already loaded
+    
+    try {
+      setIsLoadingTopics(true);
+      setError(null);
+
+      const popularTopics = await apiService.getPopularTopics();
+      setTopics(popularTopics);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while fetching topics');
+    } finally {
+      setIsLoadingTopics(false);
+    }
+  };
+
+  const searchTopics = async (query: string) => {
+    if (!query.trim()) {
+      fetchPopularTopics();
+      return;
+    }
+    
+    try {
+      setIsLoadingTopics(true);
+      setError(null);
+
+      const response = await apiService.searchTopics(query);
+      setTopics(response.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while searching topics');
+    } finally {
+      setIsLoadingTopics(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [apiService]);
@@ -184,6 +238,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
       fetchFollowers();
     } else if (activeTab === 'starred' && starredRepos.length === 0) {
       fetchStarredRepos();
+    } else if (activeTab === 'topics' && topics.length === 0) {
+      fetchPopularTopics();
     }
   }, [activeTab]);
 
@@ -202,6 +258,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } else if (activeTab === 'starred') {
       setStarredRepos([]);
       fetchStarredRepos();
+    } else if (activeTab === 'topics') {
+      setTopics([]);
+      if (topicsSearchQuery) {
+        searchTopics(topicsSearchQuery);
+      } else {
+        fetchPopularTopics();
+      }
     }
   };
 
@@ -307,9 +370,115 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     }
   };
 
-  const handleDownloadCSV = (type: 'following' | 'followers' | 'starred') => {
+  const handleUnstar = async (repository: GitHubRepository) => {
+    try {
+      setUnstarringRepos(prev => new Set(prev).add(repository.id));
+      setError(null);
+
+      // Check rate limit before unstarring
+      const rateLimitInfo = await apiService.getRateLimit();
+      setRateLimit(rateLimitInfo);
+
+      if (rateLimitInfo.rate.remaining < 10) {
+        throw new Error('Insufficient API calls remaining. Please wait for rate limit reset.');
+      }
+
+      await apiService.unstarRepository(repository.owner.login, repository.name);
+      
+      // Remove repository from starred list
+      setStarredRepos(prev => prev.filter(repo => repo.id !== repository.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while unstarring');
+    } finally {
+      setUnstarringRepos(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(repository.id);
+        return newSet;
+      });
+    }
+  };
+
+  const handleBulkUnstar = async () => {
+    if (starredRepos.length === 0) {
+      alert('No starred repositories to unstar!');
+      return;
+    }
+
+    const confirmMessage = `Are you sure you want to unstar all ${starredRepos.length} starred repositories? This action cannot be undone.`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsBulkUnstarring(true);
+      setBulkUnstarProgress({ current: 0, total: starredRepos.length });
+      setError(null);
+
+      // Check rate limit before starting
+      const rateLimitInfo = await apiService.getRateLimit();
+      setRateLimit(rateLimitInfo);
+
+      if (rateLimitInfo.rate.remaining < starredRepos.length + 10) {
+        throw new Error(`Insufficient API calls remaining (${rateLimitInfo.rate.remaining}) to unstar ${starredRepos.length} repositories. Please wait for rate limit reset.`);
+      }
+
+      // Process unstars in batches to respect rate limits
+      const batchSize = 5;
+      let unstarredCount = 0;
+      const unstarredRepos = new Set<number>();
+      
+      for (let i = 0; i < starredRepos.length; i += batchSize) {
+        const batch = starredRepos.slice(i, i + batchSize);
+        
+        await Promise.all(
+          batch.map(async (repo) => {
+            try {
+              await apiService.unstarRepository(repo.owner.login, repo.name);
+              unstarredRepos.add(repo.id);
+              unstarredCount++;
+              setBulkUnstarProgress({ current: unstarredCount, total: starredRepos.length });
+            } catch (error) {
+              console.error(`Failed to unstar ${repo.full_name}:`, error);
+            }
+          })
+        );
+        
+        // Small delay between batches to be respectful to the API
+        if (i + batchSize < starredRepos.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+
+      // Update starred repos list by removing unstarred repos
+      setStarredRepos(prev => prev.filter(repo => !unstarredRepos.has(repo.id)));
+      
+      // Show success message
+      if (unstarredCount > 0) {
+        alert(`Successfully unstarred ${unstarredCount} repositories!`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during bulk unstar');
+    } finally {
+      setIsBulkUnstarring(false);
+      setBulkUnstarProgress({ current: 0, total: 0 });
+    }
+  };
+
+  const handleTopicsSearch = (query: string) => {
+    setTopicsSearchQuery(query);
+    if (query !== searchTerm) {
+      searchTopics(query);
+    }
+  };
+
+  const handleDownloadCSV = (type: 'following' | 'followers' | 'starred' | 'topics') => {
     if (type === 'starred') {
       const csvContent = convertReposToCSV(starredRepos);
+      const filename = getCSVFilename(type, currentUser?.login);
+      downloadCSV(csvContent, filename);
+    } else if (type === 'topics') {
+      const csvContent = convertTopicsToCSV(topics);
       const filename = getCSVFilename(type, currentUser?.login);
       downloadCSV(csvContent, filename);
     } else {
@@ -376,6 +545,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                   Bulk Unfollow ({nonMutualFollowsCount})
                 </button>
               )}
+              {activeTab === 'starred' && starredRepos.length > 0 && !isBulkUnstarring && (
+                <button
+                  onClick={handleBulkUnstar}
+                  className="text-xs px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-full transition-colors"
+                  title="Unstar all starred repositories"
+                >
+                  <StarOff className="w-3 h-3 inline mr-1" />
+                  Bulk Unstar ({starredRepos.length})
+                </button>
+              )}
               {rateLimit && (
                 <div className="text-xs text-slate-400 hidden sm:block">
                   Rate limit: {rateLimit.rate.remaining}/{rateLimit.rate.limit}
@@ -383,11 +562,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
               )}
               <button
                 onClick={handleRefresh}
-                disabled={isLoading || isCheckingMutualFollows}
+                disabled={isLoading || isCheckingMutualFollows || isBulkUnstarring || isLoadingTopics}
                 className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
                 title="Refresh data"
               >
-                <RefreshCw className={`w-5 h-5 ${(isLoading || isCheckingMutualFollows) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-5 h-5 ${(isLoading || isCheckingMutualFollows || isBulkUnstarring || isLoadingTopics) ? 'animate-spin' : ''}`} />
               </button>
               <button
                 onClick={onLogout}
@@ -415,6 +594,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             <span>Bulk unfollowing users... ({bulkUnfollowProgress.current}/{bulkUnfollowProgress.total}) Please don't close this tab.</span>
           </div>
         )}
+
+        {isBulkUnstarring && (
+          <div className="mb-6 flex items-center space-x-2 text-yellow-400 bg-yellow-900/20 border border-yellow-800 rounded-lg p-4">
+            <div className="w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <span>Bulk unstarring repositories... ({bulkUnstarProgress.current}/{bulkUnstarProgress.total}) Please don't close this tab.</span>
+          </div>
+        )}
+
 
         {error && (
           <div className="mb-6 flex items-center space-x-2 text-red-400 bg-red-900/20 border border-red-800 rounded-lg p-4">
@@ -465,6 +652,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                 <span>Starred ({starredRepos.length})</span>
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('topics')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                activeTab === 'topics'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Hash className="w-4 h-4" />
+                <span>Topics ({topics.length})</span>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -474,18 +674,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-slate-400 text-sm">
-                  {activeTab === 'following' ? 'Following' : activeTab === 'followers' ? 'Followers' : 'Starred Repos'}
+                  {activeTab === 'following' ? 'Following' : activeTab === 'followers' ? 'Followers' : activeTab === 'starred' ? 'Starred Repos' : 'Topics'}
                 </p>
                 <p className="text-2xl font-bold text-white">
-                  {activeTab === 'following' ? following.length : activeTab === 'followers' ? followers.length : starredRepos.length}
+                  {activeTab === 'following' ? following.length : activeTab === 'followers' ? followers.length : activeTab === 'starred' ? starredRepos.length : topics.length}
                 </p>
               </div>
               {activeTab === 'following' ? (
                 <Users className="w-8 h-8 text-blue-400" />
               ) : activeTab === 'followers' ? (
                 <UserCheck className="w-8 h-8 text-green-400" />
-              ) : (
+              ) : activeTab === 'starred' ? (
                 <Star className="w-8 h-8 text-yellow-400" />
+              ) : (
+                <Hash className="w-8 h-8 text-purple-400" />
               )}
             </div>
           </div>
@@ -514,7 +716,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             </>
           )}
 
-          {activeTab !== 'starred' && (
+          {(activeTab === 'following' || activeTab === 'followers') && (
             <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 md:col-span-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -528,6 +730,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             </div>
           )}
 
+          {activeTab === 'topics' && (
+            <>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-400 text-sm">Featured Topics</p>
+                    <p className="text-2xl font-bold text-white">
+                      {topics.filter(topic => topic.featured).length}
+                    </p>
+                  </div>
+                  <Star className="w-8 h-8 text-yellow-400" />
+                </div>
+              </div>
+
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-400 text-sm">Curated Topics</p>
+                    <p className="text-2xl font-bold text-white">
+                      {topics.filter(topic => topic.curated).length}
+                    </p>
+                  </div>
+                  <CheckCircle className="w-8 h-8 text-green-400" />
+                </div>
+              </div>
+            </>
+          )}
+
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
             <div className="flex flex-col items-center justify-center h-full">
               <button
@@ -535,10 +765,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                 disabled={
                   (activeTab === 'following' ? following.length === 0 : 
                    activeTab === 'followers' ? followers.length === 0 : 
-                   starredRepos.length === 0) ||
+                   activeTab === 'starred' ? starredRepos.length === 0 :
+                   topics.length === 0) ||
                   isLoading || 
                   isLoadingFollowers ||
-                  isLoadingStarred
+                  isLoadingStarred ||
+                  isLoadingTopics
                 }
                 className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
               >
@@ -555,23 +787,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search users..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={activeTab === 'starred' ? 'Search repositories...' : activeTab === 'topics' ? 'Search topics...' : 'Search users...'}
+              value={activeTab === 'topics' ? topicsSearchQuery : searchTerm}
+              onChange={(e) => {
+                if (activeTab === 'topics') {
+                  handleTopicsSearch(e.target.value);
+                } else {
+                  setSearchTerm(e.target.value);
+                }
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && activeTab === 'topics') {
+                  searchTopics(topicsSearchQuery);
+                }
+              }}
               className="w-full pl-10 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
         </div>
 
         {/* Content Grid */}
-        {((isLoading && activeTab === 'following') || (isLoadingFollowers && activeTab === 'followers') || (isLoadingStarred && activeTab === 'starred') || isCheckingMutualFollows) ? (
+        {((isLoading && activeTab === 'following') || (isLoadingFollowers && activeTab === 'followers') || (isLoadingStarred && activeTab === 'starred') || (isLoadingTopics && activeTab === 'topics') || isCheckingMutualFollows || isBulkUnstarring) ? (
           <div className="text-center py-12">
             <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-slate-300">
               {isCheckingMutualFollows 
                 ? 'Checking mutual follows...' 
+                : isBulkUnstarring
+                ? 'Bulk unstarring repositories...'
                 : activeTab === 'starred'
                 ? 'Loading starred repositories...'
+                : activeTab === 'topics'
+                ? 'Loading topics...'
                 : `Loading ${activeTab === 'following' ? 'following' : 'followers'} users...`
               }
             </p>
@@ -581,7 +828,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             {filteredRepos.map((repo) => (
               <RepositoryCard 
                 key={repo.id} 
-                repository={repo} 
+                repository={repo}
+                onUnstar={handleUnstar}
+                isUnstarring={unstarringRepos.has(repo.id)}
+                showUnstarButton={true}
+              />
+            ))}
+          </div>
+        ) : activeTab === 'topics' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTopics.map((topic) => (
+              <TopicCard 
+                key={topic.name} 
+                topic={topic}
               />
             ))}
           </div>
@@ -599,21 +858,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
           </div>
         )}
 
-        {!isLoading && !isLoadingFollowers && !isLoadingStarred && !isCheckingMutualFollows && 
+        {!isLoading && !isLoadingFollowers && !isLoadingStarred && !isLoadingTopics && !isCheckingMutualFollows && !isBulkUnstarring && 
          ((activeTab === 'starred' && filteredRepos.length === 0 && starredRepos.length > 0) ||
-          (activeTab !== 'starred' && filteredUsers.length === 0 && (activeTab === 'following' ? following.length > 0 : followers.length > 0))) && (
+          (activeTab === 'topics' && filteredTopics.length === 0 && topics.length > 0) ||
+          ((activeTab === 'following' || activeTab === 'followers') && filteredUsers.length === 0 && (activeTab === 'following' ? following.length > 0 : followers.length > 0))) && (
           <div className="text-center py-12">
             <Search className="w-12 h-12 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-400">
-              {activeTab === 'starred' ? 'No repositories found matching your search.' : 'No users found matching your search.'}
+              {activeTab === 'starred' ? 'No repositories found matching your search.' : 
+               activeTab === 'topics' ? 'No topics found matching your search.' : 
+               'No users found matching your search.'}
             </p>
           </div>
         )}
 
-        {!isLoading && !isLoadingFollowers && !isLoadingStarred && !isCheckingMutualFollows && 
+        {!isLoading && !isLoadingFollowers && !isLoadingStarred && !isLoadingTopics && !isCheckingMutualFollows && !isBulkUnstarring && 
          ((activeTab === 'following' && following.length === 0) ||
           (activeTab === 'followers' && followers.length === 0) ||
-          (activeTab === 'starred' && starredRepos.length === 0)) && (
+          (activeTab === 'starred' && starredRepos.length === 0) ||
+          (activeTab === 'topics' && topics.length === 0)) && (
           <div className="text-center py-12">
             {activeTab === 'following' ? (
               <>
@@ -625,10 +888,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                 <UserCheck className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                 <p className="text-slate-400">You don't have any followers yet.</p>
               </>
-            ) : (
+            ) : activeTab === 'starred' ? (
               <>
                 <Star className="w-12 h-12 text-slate-600 mx-auto mb-4" />
                 <p className="text-slate-400">You haven't starred any repositories yet.</p>
+              </>
+            ) : (
+              <>
+                <Hash className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                <p className="text-slate-400">No topics found. Try searching for topics like "javascript", "machine-learning", or "web-development".</p>
               </>
             )}
           </div>

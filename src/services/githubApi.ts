@@ -1,4 +1,4 @@
-import { GitHubUser, GitHubApiError, AuthConfig, GitHubRepository, GitHubRateLimit } from '../types/github';
+import { GitHubUser, GitHubApiError, AuthConfig, GitHubRepository, GitHubRateLimit, GitHubTopic, GitHubTopicsSearchResponse } from '../types/github';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 
@@ -186,5 +186,40 @@ export class GitHubApiService {
     }
 
     return allStarredRepos;
+  }
+
+  async unstarRepository(owner: string, repo: string): Promise<void> {
+    const response = await fetch(`${GITHUB_API_BASE}/user/starred/${owner}/${repo}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.config.token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+
+    if (!response.ok) {
+      const error: GitHubApiError = await response.json().catch(() => ({
+        message: `HTTP ${response.status}: ${response.statusText}`,
+      }));
+      throw new Error(error.message);
+    }
+  }
+
+  async searchTopics(query: string, page: number = 1, perPage: number = 30): Promise<GitHubTopicsSearchResponse> {
+    const encodedQuery = encodeURIComponent(query);
+    return this.makeRequest(`/search/topics?q=${encodedQuery}&page=${page}&per_page=${perPage}`) as Promise<GitHubTopicsSearchResponse>;
+  }
+
+  async getPopularTopics(): Promise<GitHubTopic[]> {
+    try {
+      // Search for featured topics (most popular/curated ones)
+      const response = await this.searchTopics('is:featured', 1, 30);
+      return response.items;
+    } catch (error) {
+      // Fallback to general popular topics if featured search fails
+      const response = await this.searchTopics('repositories:>1000', 1, 30);
+      return response.items;
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { GitHubUser, GitHubRepository } from '../types/github';
+import { GitHubUser, GitHubRepository, GitHubTopic } from '../types/github';
 
 export const convertToCSV = (data: GitHubUser[]): string => {
   if (data.length === 0) {
@@ -136,7 +136,50 @@ export const convertReposToCSV = (data: GitHubRepository[]): string => {
   return csvContent;
 };
 
-export const getCSVFilename = (type: 'following' | 'followers' | 'starred', username?: string): string => {
+export const convertTopicsToCSV = (data: GitHubTopic[]): string => {
+  if (data.length === 0) {
+    return 'No data available';
+  }
+
+  // CSV headers
+  const headers = [
+    'Topic Name',
+    'Display Name',
+    'Short Description',
+    'Description',
+    'Created By',
+    'Created At',
+    'Updated At',
+    'Featured',
+    'Curated',
+    'Score',
+    'Topic URL'
+  ];
+
+  // Convert data to CSV rows
+  const rows = data.map(topic => [
+    escapeCSVField(topic.name),
+    escapeCSVField(topic.display_name || ''),
+    escapeCSVField(topic.short_description || ''),
+    escapeCSVField(topic.description || ''),
+    escapeCSVField(topic.created_by || ''),
+    escapeCSVField(topic.created_at || ''),
+    escapeCSVField(topic.updated_at || ''),
+    topic.featured ? 'true' : 'false',
+    topic.curated ? 'true' : 'false',
+    topic.score?.toString() || '',
+    escapeCSVField(`https://github.com/topics/${topic.name}`)
+  ]);
+
+  // Combine headers and rows
+  const csvContent = [headers, ...rows]
+    .map(row => row.join(','))
+    .join('\n');
+
+  return csvContent;
+};
+
+export const getCSVFilename = (type: 'following' | 'followers' | 'starred' | 'topics', username?: string): string => {
   const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
   const userPrefix = username ? `${username}-` : '';
   return `${userPrefix}github-${type}-${date}.csv`;

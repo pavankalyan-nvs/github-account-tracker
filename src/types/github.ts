@@ -63,3 +63,22 @@ export interface GitHubRateLimit {
     used: number;
   };
 }
+
+export interface GitHubTopic {
+  name: string;
+  display_name?: string;
+  short_description?: string;
+  description?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+  featured?: boolean;
+  curated?: boolean;
+  score?: number;
+}
+
+export interface GitHubTopicsSearchResponse {
+  total_count: number;
+  incomplete_results: boolean;
+  items: GitHubTopic[];
+}

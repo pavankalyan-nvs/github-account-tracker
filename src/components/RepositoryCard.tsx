@@ -1,12 +1,20 @@
 import React from 'react';
-import { ExternalLink, Star, GitFork, Calendar, Lock } from 'lucide-react';
+import { ExternalLink, Star, GitFork, Calendar, Lock, StarOff } from 'lucide-react';
 import { GitHubRepository } from '../types/github';
 
 interface RepositoryCardProps {
   repository: GitHubRepository;
+  onUnstar?: (repository: GitHubRepository) => void;
+  isUnstarring?: boolean;
+  showUnstarButton?: boolean;
 }
 
-export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository }) => {
+export const RepositoryCard: React.FC<RepositoryCardProps> = ({ 
+  repository, 
+  onUnstar, 
+  isUnstarring = false, 
+  showUnstarButton = false 
+}) => {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
@@ -53,15 +61,31 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository }) =>
             </p>
           )}
         </div>
-        <a
-          href={repository.html_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-2 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-          title="View repository on GitHub"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </a>
+        <div className="flex items-center space-x-2 ml-2">
+          {showUnstarButton && onUnstar && (
+            <button
+              onClick={() => onUnstar(repository)}
+              disabled={isUnstarring}
+              className="p-2 text-yellow-400 hover:text-yellow-600 dark:hover:text-yellow-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Unstar repository"
+            >
+              {isUnstarring ? (
+                <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <StarOff className="w-4 h-4" />
+              )}
+            </button>
+          )}
+          <a
+            href={repository.html_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            title="View repository on GitHub"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
