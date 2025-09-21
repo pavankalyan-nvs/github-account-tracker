@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, Users, RefreshCw, LogOut, AlertCircle, CheckCircle, Download, UserCheck, Heart, UserMinus, Shield, Star, StarOff, Hash } from 'lucide-react';
 import { GitHubApiService } from '../services/githubApi';
 import { GitHubUser, AuthConfig, UserWithFollowStatus, GitHubRepository, GitHubRateLimit, GitHubTopic } from '../types/github';
@@ -85,7 +85,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     return following.filter(user => !user.isMutualFollow).length;
   }, [following]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -107,9 +107,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [apiService]);
 
-  const checkMutualFollows = async () => {
+  const checkMutualFollows = useCallback(async () => {
     if (following.length === 0) return;
     
     try {
@@ -161,8 +161,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } finally {
       setIsCheckingMutualFollows(false);
     }
-  };
-  const fetchFollowers = async () => {
+  }, [apiService, following]);
+  const fetchFollowers = useCallback(async () => {
     if (followers.length > 0) return; // Already loaded
     
     try {
@@ -176,9 +176,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } finally {
       setIsLoadingFollowers(false);
     }
-  };
+  }, [apiService, followers.length]);
 
-  const fetchStarredRepos = async () => {
+  const fetchStarredRepos = useCallback(async () => {
     if (starredRepos.length > 0) return; // Already loaded
     
     try {
@@ -192,9 +192,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } finally {
       setIsLoadingStarred(false);
     }
-  };
+  }, [apiService, starredRepos.length]);
 
-  const fetchPopularTopics = async () => {
+  const fetchPopularTopics = useCallback(async () => {
     if (topics.length > 0) return; // Already loaded
     
     try {
@@ -208,7 +208,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } finally {
       setIsLoadingTopics(false);
     }
-  };
+  }, [apiService, topics.length]);
 
   const searchTopics = async (query: string) => {
     if (!query.trim()) {
@@ -231,7 +231,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
 
   useEffect(() => {
     fetchData();
-  }, [apiService]);
+  }, [fetchData]);
 
   useEffect(() => {
     if (activeTab === 'followers' && followers.length === 0) {
@@ -241,14 +241,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } else if (activeTab === 'topics' && topics.length === 0) {
       fetchPopularTopics();
     }
-  }, [activeTab]);
+  }, [activeTab, followers.length, starredRepos.length, topics.length, fetchFollowers, fetchStarredRepos, fetchPopularTopics]);
 
   useEffect(() => {
     // Auto-check mutual follows after following list is loaded
     if (following.length > 0 && !following.some(user => user.isMutualFollow !== undefined)) {
       checkMutualFollows();
     }
-  }, [following.length]);
+  }, [following, checkMutualFollows]);
   const handleRefresh = () => {
     if (activeTab === 'following') {
       fetchData();
