@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import { Key, Github, AlertCircle, Eye, EyeOff, Shield, Trash2 } from 'lucide-react';
 import { AuthConfigWithStorage, TokenStoragePreferences, StoredTokenInfo } from '../types/github';
 import { TokenStorageConsent } from './TokenStorageConsent';
 import SecureTokenStorage from '../utils/tokenStorage';
+import { useKeyboardNavigation, useScreenReader } from '../hooks/useAccessibility';
 
 interface AuthFormProps {
   onAuth: (config: AuthConfigWithStorage) => void;
@@ -21,11 +22,17 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error, storedTokenIn
     expiresInHours: 24,
   });
 
+  const tokenInputId = useId();
+  const tokenDescriptionId = useId();
+  const errorId = useId();
+  const { announce } = useScreenReader();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token.trim()) return;
     
     setIsLoading(true);
+    announce('Authenticating with GitHub...', 'assertive');
     const config: AuthConfigWithStorage = {
       token: token.trim(),
       storagePreferences: storagePreferences.rememberToken ? storagePreferences : undefined,
@@ -58,20 +65,20 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error, storedTokenIn
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-8 max-w-md w-full shadow-2xl">
-        <div className="text-center mb-8">
-          <Github className="w-12 h-12 text-blue-400 mx-auto mb-4" />
+        <header className="text-center mb-8">
+          <Github className="w-12 h-12 text-blue-400 mx-auto mb-4" aria-hidden="true" />
           <h1 className="text-2xl font-bold text-white mb-2">GitHub Following Tracker</h1>
           <p className="text-slate-400">Enter your GitHub Personal Access Token to view your following list</p>
-        </div>
+        </header>
 
         {/* Stored Token Info */}
         {storedTokenInfo?.hasStoredToken && (
-          <div className="mb-6 p-4 bg-green-900/20 border border-green-800 rounded-lg">
+          <section className="mb-6 p-4 bg-green-900/20 border border-green-800 rounded-lg" aria-labelledby="stored-token-heading">
             <div className="flex items-start justify-between">
               <div className="flex items-start space-x-2">
-                <Shield className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                <Shield className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="text-sm font-medium text-green-300">Stored Token Found</p>
+                  <h2 id="stored-token-heading" className="text-sm font-medium text-green-300">Stored Token Found</h2>
                   <p className="text-xs text-green-400 mt-1">
                     {storedTokenInfo.maskedToken && `Token: ${storedTokenInfo.maskedToken}`}
                   </p>
@@ -87,46 +94,54 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error, storedTokenIn
               <button
                 type="button"
                 onClick={handleClearStoredToken}
-                className="text-red-400 hover:text-red-300 transition-colors"
-                title="Clear stored token"
+                className="text-red-400 hover:text-red-300 transition-colors focus-visible:ring-2 focus-visible:ring-red-400 rounded p-1"
+                aria-label="Clear stored token"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          </div>
+          </section>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
           <div>
-            <label htmlFor="token" className="block text-sm font-medium text-slate-300 mb-2">
+            <label htmlFor={tokenInputId} className="block text-sm font-medium text-slate-300 mb-2">
               Personal Access Token
             </label>
             <div className="relative">
-              <Key className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+              <Key className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" aria-hidden="true" />
               <input
-                id="token"
+                id={tokenInputId}
                 type={showToken ? "text" : "password"}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                 className="w-full pl-10 pr-12 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 required
+                aria-describedby={`${tokenDescriptionId}${error ? ` ${errorId}` : ''}`}
+                aria-invalid={!!error}
+                autoComplete="off"
+                spellCheck="false"
               />
               <button
                 type="button"
-                onClick={() => setShowToken(!showToken)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                onClick={() => {
+                  setShowToken(!showToken);
+                  announce(showToken ? 'Token hidden' : 'Token visible');
+                }}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 rounded p-1"
+                aria-label={showToken ? "Hide token" : "Show token"}
               >
                 {showToken ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
-            <p className="text-xs text-slate-400 mt-2">
+            <p id={tokenDescriptionId} className="text-xs text-slate-400 mt-2">
               Create a token at{' '}
               <a
                 href="https://github.com/settings/tokens"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 underline"
+                className="text-blue-400 hover:text-blue-300 underline focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
               >
                 GitHub Settings
               </a>
@@ -139,9 +154,11 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error, storedTokenIn
             <button
               type="button"
               onClick={() => setShowStorageOptions(!showStorageOptions)}
-              className="flex items-center space-x-2 text-sm text-slate-300 hover:text-white transition-colors"
+              className="flex items-center space-x-2 text-sm text-slate-300 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 rounded p-2 -m-2"
+              aria-expanded={showStorageOptions}
+              aria-controls="storage-options"
             >
-              <Shield className="w-4 h-4" />
+              <Shield className="w-4 h-4" aria-hidden="true" />
               <span>Token Storage Options</span>
               <span className="text-xs text-slate-500">
                 {storagePreferences.rememberToken ? '(Enabled)' : '(Disabled)'}
@@ -149,7 +166,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error, storedTokenIn
             </button>
             
             {showStorageOptions && (
-              <div className="mt-3">
+              <div id="storage-options" className="mt-3">
                 <TokenStorageConsent
                   onPreferencesChange={setStoragePreferences}
                   initialPreferences={storagePreferences}

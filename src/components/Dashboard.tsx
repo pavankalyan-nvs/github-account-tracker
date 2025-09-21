@@ -7,6 +7,10 @@ import { RepositoryCard } from './RepositoryCard';
 import { TopicCard } from './TopicCard';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ComponentErrorFallback } from './ErrorFallback';
+import { UserCardSkeleton } from './skeletons/UserCardSkeleton';
+import { RepositoryCardSkeleton } from './skeletons/RepositoryCardSkeleton';
+import { TopicCardSkeleton } from './skeletons/TopicCardSkeleton';
+import { ProgressBar } from './ProgressBar';
 import { convertToCSV, downloadCSV, getCSVFilename, convertReposToCSV, convertTopicsToCSV } from '../utils/csvExport';
 
 interface DashboardProps {
@@ -36,6 +40,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'following' | 'followers' | 'starred' | 'topics'>('following');
   const [rateLimit, setRateLimit] = useState<GitHubRateLimit | null>(null);
+  const [isExportingCSV, setIsExportingCSV] = useState(false);
+  const [isSearchingTopics, setIsSearchingTopics] = useState(false);
 
   const apiService = useMemo(() => new GitHubApiService({
     ...config,
@@ -219,7 +225,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     }
     
     try {
-      setIsLoadingTopics(true);
+      setIsSearchingTopics(true);
       setError(null);
 
       const response = await apiService.searchTopics(query);
@@ -227,7 +233,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred while searching topics');
     } finally {
-      setIsLoadingTopics(false);
+      setIsSearchingTopics(false);
     }
   };
 
@@ -474,20 +480,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     }
   };
 
-  const handleDownloadCSV = (type: 'following' | 'followers' | 'starred' | 'topics') => {
-    if (type === 'starred') {
-      const csvContent = convertReposToCSV(starredRepos);
-      const filename = getCSVFilename(type, currentUser?.login);
-      downloadCSV(csvContent, filename);
-    } else if (type === 'topics') {
-      const csvContent = convertTopicsToCSV(topics);
-      const filename = getCSVFilename(type, currentUser?.login);
-      downloadCSV(csvContent, filename);
-    } else {
-      const data = type === 'following' ? following : followers;
-      const csvContent = convertToCSV(data);
-      const filename = getCSVFilename(type, currentUser?.login);
-      downloadCSV(csvContent, filename);
+  const handleDownloadCSV = async (type: 'following' | 'followers' | 'starred' | 'topics') => {
+    try {
+      setIsExportingCSV(true);
+      setError(null);
+      
+      // Add a small delay to show loading state for better UX
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (type === 'starred') {
+        const csvContent = convertReposToCSV(starredRepos);
+        const filename = getCSVFilename(type, currentUser?.login);
+        downloadCSV(csvContent, filename);
+      } else if (type === 'topics') {
+        const csvContent = convertTopicsToCSV(topics);
+        const filename = getCSVFilename(type, currentUser?.login);
+        downloadCSV(csvContent, filename);
+      } else {
+        const data = type === 'following' ? following : followers;
+        const csvContent = convertToCSV(data);
+        const filename = getCSVFilename(type, currentUser?.login);
+        downloadCSV(csvContent, filename);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during CSV export');
+    } finally {
+      setIsExportingCSV(false);
     }
   };
 
@@ -591,16 +609,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
         )}
 
         {isBulkUnfollowing && (
-          <div className="mb-6 flex items-center space-x-2 text-orange-400 bg-orange-900/20 border border-orange-800 rounded-lg p-4">
-            <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <span>Bulk unfollowing users... ({bulkUnfollowProgress.current}/{bulkUnfollowProgress.total}) Please don't close this tab.</span>
+          <div className="mb-6 text-orange-400 bg-orange-900/20 border border-orange-800 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <span>Bulk unfollowing users... Please don't close this tab.</span>
+            </div>
+            <ProgressBar
+              current={bulkUnfollowProgress.current}
+              total={bulkUnfollowProgress.total}
+              barClassName="bg-gradient-to-r from-orange-500 to-orange-600"
+              className="text-orange-300"
+            />
           </div>
         )}
 
         {isBulkUnstarring && (
-          <div className="mb-6 flex items-center space-x-2 text-yellow-400 bg-yellow-900/20 border border-yellow-800 rounded-lg p-4">
-            <div className="w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <span>Bulk unstarring repositories... ({bulkUnstarProgress.current}/{bulkUnstarProgress.total}) Please don't close this tab.</span>
+          <div className="mb-6 text-yellow-400 bg-yellow-900/20 border border-yellow-800 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-3">
+              <div className="w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <span>Bulk unstarring repositories... Please don't close this tab.</span>
+            </div>
+            <ProgressBar
+              current={bulkUnstarProgress.current}
+              total={bulkUnstarProgress.total}
+              barClassName="bg-gradient-to-r from-yellow-500 to-yellow-600"
+              className="text-yellow-300"
+            />
           </div>
         )}
 
@@ -772,12 +806,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                   isLoading || 
                   isLoadingFollowers ||
                   isLoadingStarred ||
-                  isLoadingTopics
+                  isLoadingTopics ||
+                  isExportingCSV
                 }
                 className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
               >
-                <Download className="w-4 h-4" />
-                <span>Download CSV</span>
+                {isExportingCSV ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>Download CSV</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -786,7 +830,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
         {/* Search */}
         <div className="mb-8">
           <div className="relative max-w-md">
-            <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            {isSearchingTopics && activeTab === 'topics' ? (
+              <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin absolute left-3 top-1/2 transform -translate-y-1/2" />
+            ) : (
+              <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+            )}
             <input
               type="text"
               placeholder={activeTab === 'starred' ? 'Search repositories...' : activeTab === 'topics' ? 'Search topics...' : 'Search users...'}
@@ -814,19 +862,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
           isolate={true}
           onError={(error) => console.error(`${activeTab} content error:`, error)}
         >
-          {((isLoading && activeTab === 'following') || (isLoadingFollowers && activeTab === 'followers') || (isLoadingStarred && activeTab === 'starred') || (isLoadingTopics && activeTab === 'topics') || isCheckingMutualFollows || isBulkUnstarring) ? (
+          {((isLoading && activeTab === 'following') || (isLoadingFollowers && activeTab === 'followers') || (isLoadingStarred && activeTab === 'starred') || (isLoadingTopics && activeTab === 'topics') || (isSearchingTopics && activeTab === 'topics')) ? (
+            // Show skeleton loaders during initial loading
+            activeTab === 'starred' ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <RepositoryCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : activeTab === 'topics' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: 9 }, (_, i) => (
+                  <TopicCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: 9 }, (_, i) => (
+                  <UserCardSkeleton key={i} />
+                ))}
+              </div>
+            )
+          ) : (isCheckingMutualFollows || isBulkUnstarring) ? (
             <div className="text-center py-12">
               <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-slate-300">
                 {isCheckingMutualFollows 
                   ? 'Checking mutual follows...' 
-                  : isBulkUnstarring
-                  ? 'Bulk unstarring repositories...'
-                  : activeTab === 'starred'
-                  ? 'Loading starred repositories...'
-                  : activeTab === 'topics'
-                  ? 'Loading topics...'
-                  : `Loading ${activeTab === 'following' ? 'following' : 'followers'} users...`
+                  : 'Bulk unstarring repositories...'
                 }
               </p>
             </div>

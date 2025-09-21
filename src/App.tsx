@@ -5,12 +5,16 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/ErrorFallback';
 import { AuthConfigWithStorage, TokenStoragePreferences, StoredTokenInfo } from './types/github';
 import SecureTokenStorage, { TokenUtils } from './utils/tokenStorage';
+import { useSkipLinks, useScreenReader } from './hooks/useAccessibility';
 
 function App() {
   const [authConfig, setAuthConfig] = useState<AuthConfigWithStorage | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoadingStoredToken, setIsLoadingStoredToken] = useState(true);
   const [storedTokenInfo, setStoredTokenInfo] = useState<StoredTokenInfo>({ hasStoredToken: false });
+  
+  const { skipToMain } = useSkipLinks();
+  const { announce } = useScreenReader();
 
   // Check for stored tokens on app load
   useEffect(() => {
@@ -159,8 +163,8 @@ function App() {
   if (isLoadingStoredToken) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <div className="text-center" role="status" aria-live="polite">
+          <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" aria-hidden="true" />
           <p className="text-slate-300">Loading...</p>
         </div>
       </div>
@@ -168,30 +172,48 @@ function App() {
   }
 
   return (
-    <ErrorBoundary 
-      fallback={ErrorFallback}
-      onError={handleAppError}
-    >
-      {!authConfig ? (
-        <ErrorBoundary 
-          fallback={ErrorFallback}
-          onError={(error) => console.error('Auth error:', error)}
+    <>
+      {/* Skip Links */}
+      <div className="sr-only">
+        <a 
+          href="#main-content" 
+          className="absolute top-0 left-0 bg-blue-600 text-white px-4 py-2 z-50 focus:not-sr-only focus:relative"
+          onClick={(e) => {
+            e.preventDefault();
+            skipToMain();
+          }}
         >
-          <AuthForm 
-            onAuth={handleAuth} 
-            error={authError || undefined}
-            storedTokenInfo={storedTokenInfo}
-          />
-        </ErrorBoundary>
-      ) : (
-        <ErrorBoundary 
-          fallback={ErrorFallback}
-          onError={(error) => console.error('Dashboard error:', error)}
-        >
-          <Dashboard config={authConfig} onLogout={handleLogout} />
-        </ErrorBoundary>
-      )}
-    </ErrorBoundary>
+          Skip to main content
+        </a>
+      </div>
+
+      <ErrorBoundary 
+        fallback={ErrorFallback}
+        onError={handleAppError}
+      >
+        {!authConfig ? (
+          <ErrorBoundary 
+            fallback={ErrorFallback}
+            onError={(error) => console.error('Auth error:', error)}
+          >
+            <main id="main-content" role="main" aria-label="Authentication">
+              <AuthForm 
+                onAuth={handleAuth} 
+                error={authError || undefined}
+                storedTokenInfo={storedTokenInfo}
+              />
+            </main>
+          </ErrorBoundary>
+        ) : (
+          <ErrorBoundary 
+            fallback={ErrorFallback}
+            onError={(error) => console.error('Dashboard error:', error)}
+          >
+            <Dashboard config={authConfig} onLogout={handleLogout} />
+          </ErrorBoundary>
+        )}
+      </ErrorBoundary>
+    </>
   );
 }
 
