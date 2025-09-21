@@ -27,6 +27,24 @@ export interface AuthConfig {
   username?: string;
 }
 
+export interface TokenStoragePreferences {
+  rememberToken: boolean;
+  storageType: 'localStorage' | 'sessionStorage' | 'memory';
+  expiresInHours: number;
+}
+
+export interface AuthConfigWithStorage extends AuthConfig {
+  storagePreferences?: TokenStoragePreferences;
+}
+
+export interface StoredTokenInfo {
+  hasStoredToken: boolean;
+  storageType?: TokenStoragePreferences['storageType'];
+  storedAt?: number;
+  expiresAt?: number;
+  maskedToken?: string;
+}
+
 export interface UserWithFollowStatus extends GitHubUser {
   isFollowingMe?: boolean;
   isMutualFollow?: boolean;
