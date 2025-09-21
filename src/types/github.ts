@@ -100,3 +100,119 @@ export interface GitHubTopicsSearchResponse {
   incomplete_results: boolean;
   items: GitHubTopic[];
 }
+
+export interface SearchFilters {
+  text: string;
+  minFollowers?: number;
+  maxFollowers?: number;
+  minFollowing?: number;
+  maxFollowing?: number;
+  location?: string;
+  company?: string;
+  accountType?: 'user' | 'organization';
+  verified?: boolean;
+  language?: string;
+  minStars?: number;
+  maxStars?: number;
+  minForks?: number;
+  maxForks?: number;
+  dateRange?: {
+    start: Date;
+    end: Date;
+    type: 'created' | 'updated' | 'pushed';
+  };
+  hasDescription?: boolean;
+  isArchived?: boolean;
+  isFork?: boolean;
+}
+
+export interface SortOptions {
+  field: 'followers' | 'following' | 'stars' | 'forks' | 'updated' | 'created' | 'name' | 'login';
+  direction: 'asc' | 'desc';
+}
+
+export interface SearchState {
+  filters: SearchFilters;
+  sort: SortOptions;
+  searchHistory: string[];
+  savedSearches: SavedSearch[];
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  filters: SearchFilters;
+  sort: SortOptions;
+  createdAt: Date;
+}
+
+export interface ChartData {
+  labels: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    backgroundColor?: string | string[];
+    borderColor?: string | string[];
+    borderWidth?: number;
+    fill?: boolean;
+    tension?: number;
+  }[];
+}
+
+export interface LanguageStats {
+  language: string;
+  count: number;
+  percentage: number;
+  color: string;
+}
+
+export interface LocationStats {
+  location: string;
+  count: number;
+  percentage: number;
+  countryCode?: string;
+}
+
+export interface EngagementData {
+  totalMutualFollows: number;
+  mutualFollowPercentage: number;
+  averageFollowersPerFollowing: number;
+  topActiveFollowers: GitHubUser[];
+  inactiveFollowersCount: number;
+  followBackRate: number;
+}
+
+export interface GrowthTrendData {
+  date: string;
+  following: number;
+  followers: number;
+  starredRepos: number;
+  mutualFollows?: number;
+}
+
+export interface AnalyticsData {
+  followingGrowth: ChartData;
+  followerGrowth: ChartData;
+  starredReposGrowth: ChartData;
+  mutualFollowRate: number;
+  languageDistribution: LanguageStats[];
+  geographicData: LocationStats[];
+  engagementMetrics: EngagementData;
+  growthTrends: GrowthTrendData[];
+  totalRepositoryStars: number;
+  averageStarsPerRepo: number;
+  topLanguages: LanguageStats[];
+  timeOfDayActivity: ChartData;
+}
+
+export interface DateRange {
+  start: Date;
+  end: Date;
+}
+
+export interface AnalyticsConfig {
+  dateRange: DateRange;
+  includeHistoricalData: boolean;
+  groupBy: 'day' | 'week' | 'month';
+  showPredictions: boolean;
+}
