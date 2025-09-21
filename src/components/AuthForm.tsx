@@ -1,23 +1,58 @@
 import React, { useState } from 'react';
-import { Key, Github, AlertCircle } from 'lucide-react';
-import { AuthConfig } from '../types/github';
+import { Key, Github, AlertCircle, Eye, EyeOff, Shield, Trash2 } from 'lucide-react';
+import { AuthConfigWithStorage, TokenStoragePreferences, StoredTokenInfo } from '../types/github';
+import { TokenStorageConsent } from './TokenStorageConsent';
+import SecureTokenStorage from '../utils/tokenStorage';
 
 interface AuthFormProps {
-  onAuth: (config: AuthConfig) => void;
+  onAuth: (config: AuthConfigWithStorage) => void;
   error?: string;
+  storedTokenInfo?: StoredTokenInfo;
 }
 
-export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error }) => {
+export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error, storedTokenInfo }) => {
   const [token, setToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [showStorageOptions, setShowStorageOptions] = useState(false);
+  const [storagePreferences, setStoragePreferences] = useState<TokenStoragePreferences>({
+    rememberToken: false,
+    storageType: 'sessionStorage',
+    expiresInHours: 24,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token.trim()) return;
     
     setIsLoading(true);
-    onAuth({ token: token.trim() });
+    const config: AuthConfigWithStorage = {
+      token: token.trim(),
+      storagePreferences: storagePreferences.rememberToken ? storagePreferences : undefined,
+    };
+    onAuth(config);
     setIsLoading(false);
+  };
+
+  const handleClearStoredToken = async () => {
+    if (storedTokenInfo?.storageType && window.confirm('Are you sure you want to clear your stored token?')) {
+      await SecureTokenStorage.clearToken(storedTokenInfo.storageType);
+      window.location.reload();
+    }
+  };
+
+  const formatStorageType = (type?: string) => {
+    switch (type) {
+      case 'localStorage': return 'Persistent Storage';
+      case 'sessionStorage': return 'Session Storage';
+      case 'memory': return 'Memory Storage';
+      default: return 'Unknown Storage';
+    }
+  };
+
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return 'Unknown';
+    return new Date(timestamp).toLocaleDateString();
   };
 
   return (
@@ -29,6 +64,38 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error }) => {
           <p className="text-slate-400">Enter your GitHub Personal Access Token to view your following list</p>
         </div>
 
+        {/* Stored Token Info */}
+        {storedTokenInfo?.hasStoredToken && (
+          <div className="mb-6 p-4 bg-green-900/20 border border-green-800 rounded-lg">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start space-x-2">
+                <Shield className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-green-300">Stored Token Found</p>
+                  <p className="text-xs text-green-400 mt-1">
+                    {storedTokenInfo.maskedToken && `Token: ${storedTokenInfo.maskedToken}`}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Storage: {formatStorageType(storedTokenInfo.storageType)} • 
+                    Stored: {formatDate(storedTokenInfo.storedAt)}
+                    {storedTokenInfo.expiresAt && (
+                      <> • Expires: {formatDate(storedTokenInfo.expiresAt)}</>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearStoredToken}
+                className="text-red-400 hover:text-red-300 transition-colors"
+                title="Clear stored token"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label htmlFor="token" className="block text-sm font-medium text-slate-300 mb-2">
@@ -38,13 +105,20 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error }) => {
               <Key className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
               <input
                 id="token"
-                type="password"
+                type={showToken ? "text" : "password"}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                className="w-full pl-10 pr-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-12 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowToken(!showToken)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+              >
+                {showToken ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
             </div>
             <p className="text-xs text-slate-400 mt-2">
               Create a token at{' '}
@@ -56,8 +130,32 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuth, error }) => {
               >
                 GitHub Settings
               </a>
-              {' '}with 'user\' scope
+              {' '}with 'user' scope
             </p>
+          </div>
+
+          {/* Token Storage Options */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowStorageOptions(!showStorageOptions)}
+              className="flex items-center space-x-2 text-sm text-slate-300 hover:text-white transition-colors"
+            >
+              <Shield className="w-4 h-4" />
+              <span>Token Storage Options</span>
+              <span className="text-xs text-slate-500">
+                {storagePreferences.rememberToken ? '(Enabled)' : '(Disabled)'}
+              </span>
+            </button>
+            
+            {showStorageOptions && (
+              <div className="mt-3">
+                <TokenStorageConsent
+                  onPreferencesChange={setStoragePreferences}
+                  initialPreferences={storagePreferences}
+                />
+              </div>
+            )}
           </div>
 
           {error && (
