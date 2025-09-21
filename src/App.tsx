@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { AuthForm } from './components/AuthForm';
 import { Dashboard } from './components/Dashboard';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorFallback } from './components/ErrorFallback';
 import { AuthConfig } from './types/github';
 
 function App() {
@@ -36,11 +38,33 @@ function App() {
     setAuthError(null);
   };
 
-  if (!authConfig) {
-    return <AuthForm onAuth={handleAuth} error={authError || undefined} />;
-  }
+  const handleAppError = (error: Error, errorInfo: React.ErrorInfo) => {
+    console.error('App-level error:', error, errorInfo);
+    // In production, send to monitoring service
+  };
 
-  return <Dashboard config={authConfig} onLogout={handleLogout} />;
+  return (
+    <ErrorBoundary 
+      fallback={ErrorFallback}
+      onError={handleAppError}
+    >
+      {!authConfig ? (
+        <ErrorBoundary 
+          fallback={ErrorFallback}
+          onError={(error) => console.error('Auth error:', error)}
+        >
+          <AuthForm onAuth={handleAuth} error={authError || undefined} />
+        </ErrorBoundary>
+      ) : (
+        <ErrorBoundary 
+          fallback={ErrorFallback}
+          onError={(error) => console.error('Dashboard error:', error)}
+        >
+          <Dashboard config={authConfig} onLogout={handleLogout} />
+        </ErrorBoundary>
+      )}
+    </ErrorBoundary>
+  );
 }
 
 export default App;

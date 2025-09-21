@@ -5,6 +5,8 @@ import { GitHubUser, AuthConfig, UserWithFollowStatus, GitHubRepository, GitHubR
 import { UserCard } from './UserCard';
 import { RepositoryCard } from './RepositoryCard';
 import { TopicCard } from './TopicCard';
+import { ErrorBoundary } from './ErrorBoundary';
+import { ComponentErrorFallback } from './ErrorFallback';
 import { convertToCSV, downloadCSV, getCSVFilename, convertReposToCSV, convertTopicsToCSV } from '../utils/csvExport';
 
 interface DashboardProps {
@@ -807,57 +809,99 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
         </div>
 
         {/* Content Grid */}
-        {((isLoading && activeTab === 'following') || (isLoadingFollowers && activeTab === 'followers') || (isLoadingStarred && activeTab === 'starred') || (isLoadingTopics && activeTab === 'topics') || isCheckingMutualFollows || isBulkUnstarring) ? (
-          <div className="text-center py-12">
-            <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-slate-300">
-              {isCheckingMutualFollows 
-                ? 'Checking mutual follows...' 
-                : isBulkUnstarring
-                ? 'Bulk unstarring repositories...'
-                : activeTab === 'starred'
-                ? 'Loading starred repositories...'
-                : activeTab === 'topics'
-                ? 'Loading topics...'
-                : `Loading ${activeTab === 'following' ? 'following' : 'followers'} users...`
-              }
-            </p>
-          </div>
-        ) : activeTab === 'starred' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {filteredRepos.map((repo) => (
-              <RepositoryCard 
-                key={repo.id} 
-                repository={repo}
-                onUnstar={handleUnstar}
-                isUnstarring={unstarringRepos.has(repo.id)}
-                showUnstarButton={true}
-              />
-            ))}
-          </div>
-        ) : activeTab === 'topics' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTopics.map((topic) => (
-              <TopicCard 
-                key={topic.name} 
-                topic={topic}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredUsers.map((user) => (
-              <UserCard 
-                key={user.id} 
-                user={user} 
-                onUnfollow={activeTab === 'following' ? handleUnfollow : undefined}
-                isUnfollowing={unfollowingUsers.has(user.login)}
-                showUnfollowButton={activeTab === 'following'}
-                apiService={apiService}
-              />
-            ))}
-          </div>
-        )}
+        <ErrorBoundary 
+          fallback={ComponentErrorFallback}
+          isolate={true}
+          onError={(error) => console.error(`${activeTab} content error:`, error)}
+        >
+          {((isLoading && activeTab === 'following') || (isLoadingFollowers && activeTab === 'followers') || (isLoadingStarred && activeTab === 'starred') || (isLoadingTopics && activeTab === 'topics') || isCheckingMutualFollows || isBulkUnstarring) ? (
+            <div className="text-center py-12">
+              <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-slate-300">
+                {isCheckingMutualFollows 
+                  ? 'Checking mutual follows...' 
+                  : isBulkUnstarring
+                  ? 'Bulk unstarring repositories...'
+                  : activeTab === 'starred'
+                  ? 'Loading starred repositories...'
+                  : activeTab === 'topics'
+                  ? 'Loading topics...'
+                  : `Loading ${activeTab === 'following' ? 'following' : 'followers'} users...`
+                }
+              </p>
+            </div>
+          ) : activeTab === 'starred' ? (
+            <ErrorBoundary 
+              fallback={ComponentErrorFallback}
+              isolate={true}
+              onError={(error) => console.error('Starred repos error:', error)}
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {filteredRepos.map((repo) => (
+                  <ErrorBoundary 
+                    key={repo.id}
+                    fallback={ComponentErrorFallback}
+                    isolate={true}
+                    onError={(error) => console.error(`Repo ${repo.name} error:`, error)}
+                  >
+                    <RepositoryCard 
+                      repository={repo}
+                      onUnstar={handleUnstar}
+                      isUnstarring={unstarringRepos.has(repo.id)}
+                      showUnstarButton={true}
+                    />
+                  </ErrorBoundary>
+                ))}
+              </div>
+            </ErrorBoundary>
+          ) : activeTab === 'topics' ? (
+            <ErrorBoundary 
+              fallback={ComponentErrorFallback}
+              isolate={true}
+              onError={(error) => console.error('Topics error:', error)}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredTopics.map((topic) => (
+                  <ErrorBoundary 
+                    key={topic.name}
+                    fallback={ComponentErrorFallback}
+                    isolate={true}
+                    onError={(error) => console.error(`Topic ${topic.name} error:`, error)}
+                  >
+                    <TopicCard 
+                      topic={topic}
+                    />
+                  </ErrorBoundary>
+                ))}
+              </div>
+            </ErrorBoundary>
+          ) : (
+            <ErrorBoundary 
+              fallback={ComponentErrorFallback}
+              isolate={true}
+              onError={(error) => console.error('User list error:', error)}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredUsers.map((user) => (
+                  <ErrorBoundary 
+                    key={user.id}
+                    fallback={ComponentErrorFallback}
+                    isolate={true}
+                    onError={(error) => console.error(`User ${user.login} error:`, error)}
+                  >
+                    <UserCard 
+                      user={user} 
+                      onUnfollow={activeTab === 'following' ? handleUnfollow : undefined}
+                      isUnfollowing={unfollowingUsers.has(user.login)}
+                      showUnfollowButton={activeTab === 'following'}
+                      apiService={apiService}
+                    />
+                  </ErrorBoundary>
+                ))}
+              </div>
+            </ErrorBoundary>
+          )}
+        </ErrorBoundary>
 
         {!isLoading && !isLoadingFollowers && !isLoadingStarred && !isLoadingTopics && !isCheckingMutualFollows && !isBulkUnstarring && 
          ((activeTab === 'starred' && filteredRepos.length === 0 && starredRepos.length > 0) ||
