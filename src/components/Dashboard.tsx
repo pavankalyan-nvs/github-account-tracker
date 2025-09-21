@@ -853,6 +853,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                 onUnfollow={activeTab === 'following' ? handleUnfollow : undefined}
                 isUnfollowing={unfollowingUsers.has(user.login)}
                 showUnfollowButton={activeTab === 'following'}
+                apiService={apiService}
               />
             ))}
           </div>

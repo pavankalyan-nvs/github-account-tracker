@@ -4,6 +4,8 @@ const GITHUB_API_BASE = 'https://api.github.com';
 
 export class GitHubApiService {
   private config: AuthConfig;
+  private userDetailCache: Map<string, { user: GitHubUser; timestamp: number }> = new Map();
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   constructor(config: AuthConfig) {
     this.config = config;
@@ -32,6 +34,24 @@ export class GitHubApiService {
     return this.makeRequest('/user') as Promise<GitHubUser>;
   }
 
+  async getUserDetails(username: string): Promise<GitHubUser | null> {
+    // Check cache first
+    const cached = this.userDetailCache.get(username);
+    if (cached && (Date.now() - cached.timestamp < this.CACHE_DURATION)) {
+      return cached.user;
+    }
+
+    try {
+      const user = await this.makeRequest(`/users/${username}`) as GitHubUser;
+      // Cache the result
+      this.userDetailCache.set(username, { user, timestamp: Date.now() });
+      return user;
+    } catch {
+      // If we can't fetch details, return null
+      return null;
+    }
+  }
+
   async getFollowing(page: number = 1, perPage: number = 30): Promise<GitHubUser[]> {
     return this.makeRequest(`/user/following?page=${page}&per_page=${perPage}`) as Promise<GitHubUser[]>;
   }
@@ -48,19 +68,8 @@ export class GitHubApiService {
         break;
       }
 
-      // Fetch detailed information for each user to get their display name
-      const detailedUsers = await Promise.all(
-        following.map(async (user) => {
-          try {
-            return await this.makeRequest(`/users/${user.login}`) as GitHubUser;
-          } catch {
-            // If we can't fetch details, return the basic info
-            return user;
-          }
-        })
-      );
-
-      allFollowing.push(...detailedUsers);
+      // Use basic user data from list endpoint - no additional API calls needed
+      allFollowing.push(...following);
       
       if (following.length < perPage) {
         break; // Last page
@@ -88,19 +97,8 @@ export class GitHubApiService {
         break;
       }
 
-      // Fetch detailed information for each user to get their display name
-      const detailedUsers = await Promise.all(
-        followers.map(async (user) => {
-          try {
-            return await this.makeRequest(`/users/${user.login}`) as GitHubUser;
-          } catch {
-            // If we can't fetch details, return the basic info
-            return user;
-          }
-        })
-      );
-
-      allFollowers.push(...detailedUsers);
+      // Use basic user data from list endpoint - no additional API calls needed
+      allFollowers.push(...followers);
       
       if (followers.length < perPage) {
         break; // Last page
@@ -216,7 +214,7 @@ export class GitHubApiService {
       // Search for featured topics (most popular/curated ones)
       const response = await this.searchTopics('is:featured', 1, 30);
       return response.items;
-    } catch (error) {
+    } catch {
       // Fallback to general popular topics if featured search fails
       const response = await this.searchTopics('repositories:>1000', 1, 30);
       return response.items;
