@@ -6,6 +6,8 @@ import { ErrorFallback } from './components/ErrorFallback';
 import { AuthConfigWithStorage, TokenStoragePreferences, StoredTokenInfo } from './types/github';
 import SecureTokenStorage, { TokenUtils } from './utils/tokenStorage';
 import { useSkipLinks, useScreenReader } from './hooks/useAccessibility';
+import { ToastProvider } from './contexts/ToastContext';
+import { ToastContainer } from './components/Toast/ToastContainer';
 
 function App() {
   const [authConfig, setAuthConfig] = useState<AuthConfigWithStorage | null>(null);
@@ -172,11 +174,11 @@ function App() {
   }
 
   return (
-    <>
+    <ToastProvider>
       {/* Skip Links */}
       <div className="sr-only">
-        <a 
-          href="#main-content" 
+        <a
+          href="#main-content"
           className="absolute top-0 left-0 bg-blue-600 text-white px-4 py-2 z-50 focus:not-sr-only focus:relative"
           onClick={(e) => {
             e.preventDefault();
@@ -187,25 +189,25 @@ function App() {
         </a>
       </div>
 
-      <ErrorBoundary 
+      <ErrorBoundary
         fallback={ErrorFallback}
         onError={handleAppError}
       >
         {!authConfig ? (
-          <ErrorBoundary 
+          <ErrorBoundary
             fallback={ErrorFallback}
             onError={(error) => console.error('Auth error:', error)}
           >
             <main id="main-content" role="main" aria-label="Authentication">
-              <AuthForm 
-                onAuth={handleAuth} 
+              <AuthForm
+                onAuth={handleAuth}
                 error={authError || undefined}
                 storedTokenInfo={storedTokenInfo}
               />
             </main>
           </ErrorBoundary>
         ) : (
-          <ErrorBoundary 
+          <ErrorBoundary
             fallback={ErrorFallback}
             onError={(error) => console.error('Dashboard error:', error)}
           >
@@ -213,7 +215,10 @@ function App() {
           </ErrorBoundary>
         )}
       </ErrorBoundary>
-    </>
+
+      {/* Toast Container */}
+      <ToastContainer />
+    </ToastProvider>
   );
 }
 

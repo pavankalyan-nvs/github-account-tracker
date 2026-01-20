@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Users, RefreshCw, LogOut, AlertCircle, CheckCircle, Download, UserCheck, Heart, UserMinus, Shield, Star, StarOff, Hash } from 'lucide-react';
+import { Search, Users, RefreshCw, LogOut, AlertCircle, CheckCircle, Download, UserCheck, Heart, UserMinus, Shield, Star, StarOff, Hash, X } from 'lucide-react';
 import { GitHubApiService } from '../services/githubApi';
 import { GitHubUser, AuthConfig, UserWithFollowStatus, GitHubRepository, GitHubRateLimit, GitHubTopic } from '../types/github';
 import { UserCard } from './UserCard';
@@ -12,6 +12,10 @@ import { RepositoryCardSkeleton } from './skeletons/RepositoryCardSkeleton';
 import { TopicCardSkeleton } from './skeletons/TopicCardSkeleton';
 import { ProgressBar } from './ProgressBar';
 import { convertToCSV, downloadCSV, getCSVFilename, convertReposToCSV, convertTopicsToCSV } from '../utils/csvExport';
+import { useToast } from '../hooks/useToast';
+import { Modal } from './Modal/Modal';
+import { Button } from './Button/Button';
+import { LoadingSpinner } from './LoadingSpinner/LoadingSpinner';
 
 interface DashboardProps {
   config: AuthConfig;
@@ -42,6 +46,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
   const [rateLimit, setRateLimit] = useState<GitHubRateLimit | null>(null);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
   const [isSearchingTopics, setIsSearchingTopics] = useState(false);
+  const [showBulkUnfollowModal, setShowBulkUnfollowModal] = useState(false);
+  const [showBulkUnstarModal, setShowBulkUnstarModal] = useState(false);
+
+  const { toast } = useToast();
 
   const apiService = useMemo(() => new GitHubApiService({
     ...config,
@@ -278,7 +286,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
 
   const handleUnfollow = async (user: UserWithFollowStatus) => {
     if (user.isMutualFollow) {
-      alert('Cannot unfollow users who follow you back (mutual follows) for safety.');
+      toast.warning('Cannot unfollow users who follow you back (mutual follows) for safety.');
       return;
     }
 
@@ -295,11 +303,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
       }
 
       await apiService.unfollowUser(user.login);
-      
+
       // Remove user from following list
       setFollowing(prev => prev.filter(u => u.login !== user.login));
+      toast.success(`Successfully unfollowed @${user.login}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while unfollowing');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while unfollowing';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setUnfollowingUsers(prev => {
         const newSet = new Set(prev);
@@ -309,19 +320,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     }
   };
 
-  const handleBulkUnfollow = async () => {
+  const confirmBulkUnfollow = () => {
     const nonMutualUsers = following.filter(user => !user.isMutualFollow);
-    
+
     if (nonMutualUsers.length === 0) {
-      alert('No non-mutual follows to unfollow!');
+      toast.info('No non-mutual follows to unfollow!');
       return;
     }
 
-    const confirmMessage = `Are you sure you want to unfollow ${nonMutualUsers.length} users who don't follow you back? This action cannot be undone.`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
+    setShowBulkUnfollowModal(true);
+  };
+
+  const handleBulkUnfollow = async () => {
+    const nonMutualUsers = following.filter(user => !user.isMutualFollow);
+    setShowBulkUnfollowModal(false);
 
     try {
       setIsBulkUnfollowing(true);
@@ -333,17 +345,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
       setRateLimit(rateLimitInfo);
 
       if (rateLimitInfo.rate.remaining < nonMutualUsers.length + 10) {
-        throw new Error(`Insufficient API calls remaining (${rateLimitInfo.rate.remaining}) to unfollow ${nonMutualUsers.length} users. Please wait for rate limit reset.`);
+        const errorMsg = `Insufficient API calls remaining (${rateLimitInfo.rate.remaining}) to unfollow ${nonMutualUsers.length} users. Please wait for rate limit reset.`;
+        setError(errorMsg);
+        toast.error(errorMsg);
+        return;
       }
+
+      toast.info(`Starting bulk unfollow of ${nonMutualUsers.length} users...`);
 
       // Process unfollows in batches to respect rate limits
       const batchSize = 5;
       let unfollowedCount = 0;
       const unfollowedUsers = new Set<string>();
-      
+
       for (let i = 0; i < nonMutualUsers.length; i += batchSize) {
         const batch = nonMutualUsers.slice(i, i + batchSize);
-        
+
         await Promise.all(
           batch.map(async (user) => {
             try {
@@ -356,7 +373,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             }
           })
         );
-        
+
         // Small delay between batches to be respectful to the API
         if (i + batchSize < nonMutualUsers.length) {
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -365,13 +382,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
 
       // Update following list by removing unfollowed users
       setFollowing(prev => prev.filter(user => !unfollowedUsers.has(user.login)));
-      
+
       // Show success message
       if (unfollowedCount > 0) {
-        alert(`Successfully unfollowed ${unfollowedCount} users!`);
+        toast.success(`Successfully unfollowed ${unfollowedCount} users!`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during bulk unfollow');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred during bulk unfollow';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsBulkUnfollowing(false);
       setBulkUnfollowProgress({ current: 0, total: 0 });
@@ -392,11 +411,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
       }
 
       await apiService.unstarRepository(repository.owner.login, repository.name);
-      
+
       // Remove repository from starred list
       setStarredRepos(prev => prev.filter(repo => repo.id !== repository.id));
+      toast.success(`Unstarred ${repository.name}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred while unstarring');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while unstarring';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setUnstarringRepos(prev => {
         const newSet = new Set(prev);
@@ -406,17 +428,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
     }
   };
 
-  const handleBulkUnstar = async () => {
+  const confirmBulkUnstar = () => {
     if (starredRepos.length === 0) {
-      alert('No starred repositories to unstar!');
+      toast.info('No starred repositories to unstar!');
       return;
     }
 
-    const confirmMessage = `Are you sure you want to unstar all ${starredRepos.length} starred repositories? This action cannot be undone.`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
+    setShowBulkUnstarModal(true);
+  };
+
+  const handleBulkUnstar = async () => {
+    setShowBulkUnstarModal(false);
 
     try {
       setIsBulkUnstarring(true);
@@ -428,17 +450,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
       setRateLimit(rateLimitInfo);
 
       if (rateLimitInfo.rate.remaining < starredRepos.length + 10) {
-        throw new Error(`Insufficient API calls remaining (${rateLimitInfo.rate.remaining}) to unstar ${starredRepos.length} repositories. Please wait for rate limit reset.`);
+        const errorMsg = `Insufficient API calls remaining (${rateLimitInfo.rate.remaining}) to unstar ${starredRepos.length} repositories. Please wait for rate limit reset.`;
+        setError(errorMsg);
+        toast.error(errorMsg);
+        return;
       }
+
+      toast.info(`Starting bulk unstar of ${starredRepos.length} repositories...`);
 
       // Process unstars in batches to respect rate limits
       const batchSize = 5;
       let unstarredCount = 0;
       const unstarredRepos = new Set<number>();
-      
+
       for (let i = 0; i < starredRepos.length; i += batchSize) {
         const batch = starredRepos.slice(i, i + batchSize);
-        
+
         await Promise.all(
           batch.map(async (repo) => {
             try {
@@ -451,7 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
             }
           })
         );
-        
+
         // Small delay between batches to be respectful to the API
         if (i + batchSize < starredRepos.length) {
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -460,13 +487,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
 
       // Update starred repos list by removing unstarred repos
       setStarredRepos(prev => prev.filter(repo => !unstarredRepos.has(repo.id)));
-      
+
       // Show success message
       if (unstarredCount > 0) {
-        alert(`Successfully unstarred ${unstarredCount} repositories!`);
+        toast.success(`Successfully unstarred ${unstarredCount} repositories!`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during bulk unstar');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred during bulk unstar';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsBulkUnstarring(false);
       setBulkUnstarProgress({ current: 0, total: 0 });
@@ -556,24 +585,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
                 </button>
               )}
               {activeTab === 'following' && nonMutualFollowsCount > 0 && !isBulkUnfollowing && !isCheckingMutualFollows && (
-                <button
-                  onClick={handleBulkUnfollow}
-                  className="text-xs px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
+                <Button
+                  onClick={confirmBulkUnfollow}
+                  variant="danger"
+                  size="sm"
+                  leftIcon={<UserMinus />}
                   title="Unfollow all users who don't follow you back"
                 >
-                  <UserMinus className="w-3 h-3 inline mr-1" />
                   Bulk Unfollow ({nonMutualFollowsCount})
-                </button>
+                </Button>
               )}
               {activeTab === 'starred' && starredRepos.length > 0 && !isBulkUnstarring && (
-                <button
-                  onClick={handleBulkUnstar}
-                  className="text-xs px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-full transition-colors"
+                <Button
+                  onClick={confirmBulkUnstar}
+                  variant="danger"
+                  size="sm"
+                  leftIcon={<StarOff />}
                   title="Unstar all starred repositories"
                 >
-                  <StarOff className="w-3 h-3 inline mr-1" />
                   Bulk Unstar ({starredRepos.length})
-                </button>
+                </Button>
               )}
               {rateLimit && (
                 <div className="text-xs text-slate-400 hidden sm:block">
@@ -1010,6 +1041,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ config, onLogout }) => {
           </div>
         )}
       </main>
+
+      {/* Bulk Unfollow Confirmation Modal */}
+      <Modal
+        isOpen={showBulkUnfollowModal}
+        onClose={() => setShowBulkUnfollowModal(false)}
+        title="Bulk Unfollow Confirmation"
+        description={`Are you sure you want to unfollow ${nonMutualFollowsCount} users who don't follow you back? This action cannot be undone.`}
+        variant="confirm"
+        confirmText={`Unfollow ${nonMutualFollowsCount} Users`}
+        confirmVariant="danger"
+        onConfirm={handleBulkUnfollow}
+      />
+
+      {/* Bulk Unstar Confirmation Modal */}
+      <Modal
+        isOpen={showBulkUnstarModal}
+        onClose={() => setShowBulkUnstarModal(false)}
+        title="Bulk Unstar Confirmation"
+        description={`Are you sure you want to unstar all ${starredRepos.length} starred repositories? This action cannot be undone.`}
+        variant="confirm"
+        confirmText={`Unstar ${starredRepos.length} Repositories`}
+        confirmVariant="danger"
+        onConfirm={handleBulkUnstar}
+      />
     </div>
   );
 };
