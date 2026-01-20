@@ -38,8 +38,91 @@
   .border-slate-700 {
     border-color: #1e293b;
   }
-  
+
   .text-slate-400 {
     color: #94a3b8;
+  }
+}
+
+/* Component patterns using @layer */
+@layer components {
+  /* Card base styles */
+  .card-base {
+    @apply bg-dark-bg-secondary border border-dark-border-primary rounded-lg p-6 shadow-card transition-all duration-250 ease-out;
+  }
+
+  .card-base:hover {
+    @apply shadow-card-hover border-accent-blue-light;
+  }
+
+  /* Button base styles */
+  .btn-base {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-bg-primary disabled:opacity-50 disabled:cursor-not-allowed active:scale-95;
+  }
+
+  /* Input base styles */
+  .input-base {
+    @apply w-full px-4 py-3 bg-dark-bg-tertiary border border-dark-border-primary rounded-lg text-dark-text-primary placeholder:text-dark-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent-blue focus:border-transparent transition-all duration-200;
+  }
+
+  /* Icon button styles */
+  .icon-btn {
+    @apply p-2 text-dark-text-tertiary hover:text-dark-text-primary transition-colors duration-200 rounded-lg hover:bg-dark-bg-tertiary active:scale-95;
+  }
+}
+
+/* Custom scrollbar styles */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.dark.bg-tertiary') theme('colors.dark.bg-primary');
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: theme('colors.dark.bg-primary');
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: theme('colors.dark.bg-tertiary');
+    border-radius: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.dark.border-primary');
+  }
+}
+
+/* Shimmer effect for skeleton loaders */
+@layer utilities {
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      theme('colors.dark.bg-secondary') 0%,
+      theme('colors.dark.bg-tertiary') 50%,
+      theme('colors.dark.bg-secondary') 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .shimmer {
+    animation: none;
+    background: theme('colors.dark.bg-tertiary');
   }
 }
